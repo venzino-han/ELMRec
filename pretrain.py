@@ -3,8 +3,11 @@ import torch
 import argparse
 from transformers import T5Tokenizer
 from model.module import Solomon
-from util.utils import ExpDataLoader, SeqDataLoader, TrainBatchify, ExpBatchify, SeqBatchify, TopNBatchify, now_time
-
+from util.utils import (
+    ExpDataLoader, SeqDataLoader, 
+    TrainBatchify, ExpBatchify, SeqBatchify, TopNBatchify, 
+    now_time, get_model_name
+)
 
 parser = argparse.ArgumentParser(description='ELMRec')
 parser.add_argument('--data_dir', type=str, default=None,
@@ -45,16 +48,7 @@ parser.add_argument('--L', type=int, default=4,
 # -----
 args = parser.parse_args()
 
-if args.model_version == 1:
-    model_version = 't5-base'
-elif args.model_version == 2:
-    model_version = 't5-large'
-elif args.model_version == 3:
-    model_version = 't5-3b'
-elif args.model_version == 4:
-    model_version = 't5-11b'
-else:
-    model_version = 't5-small'
+model_version = get_model_name(args.model_version)
 
 print('-' * 40 + 'ARGUMENTS' + '-' * 40)
 for arg in vars(args):
@@ -92,10 +86,15 @@ topn_iterator = TopNBatchify(seq_corpus.user2items_positive, seq_corpus.user2ite
 # Build the model
 ###############################################################################
 
-model = Solomon.from_pretrained(model_version)
-# model = model.to(torch.float16)
+if args.model_version > 2:
+    model = Solomon.from_pretrained(model_version, torch_dtype=torch.bfloat16)
+else:
+    model = Solomon.from_pretrained(model_version)
+
 model.init_graph_embeddings(args.alpha, args.sigma, args.L, exp_corpus.train, nuser, nitem)
 model.init_prompt(args.task_num, args.prompt_num, device)
+model.model_version = args.model_version
+
 model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 

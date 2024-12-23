@@ -501,3 +501,34 @@ def evaluate_hr(user2item_test, user2items_top, top_k):
 def ids2tokens(ids, tokenizer):
     text = tokenizer.decode(ids, skip_special_tokens=True)
     return text.split()
+
+def get_model_name(model_version):
+    """
+    Get the model name based on the model version.
+
+    Args:
+        model_version (int): The model version.
+
+    Returns:
+        str: The model name.
+    """
+    if model_version == 1:
+        return 't5-base'
+    elif model_version == 2:
+        return 't5-large'
+    elif model_version == 3:
+        return 't5-3b'
+    elif model_version == 4:
+        return 't5-11b'
+
+    if model_version == 11:
+        return 'google/flan-t5-base'
+    elif model_version == 12:
+        return 'google/flan-t5-large'
+    elif model_version == 13:
+        return 'google/flan-t5-xl'
+    elif model_version == 14:
+        return 'google/flan-t5-xxl'    
+
+    else:
+        return 't5-small'

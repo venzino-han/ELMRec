@@ -4,7 +4,7 @@ import random
 import argparse
 from tqdm import tqdm
 from transformers import T5Tokenizer
-from util.utils import SeqDataLoader, SeqBatchify, now_time, evaluate_ndcg, evaluate_hr
+from util.utils import SeqDataLoader, SeqBatchify, now_time, evaluate_ndcg, evaluate_hr, get_model_name
 
 
 parser = argparse.ArgumentParser(description='ELMRec')
@@ -29,16 +29,7 @@ parser.add_argument('--N', type=int, default=10,
                     help='number of additional candidates')
 args = parser.parse_args()
 
-if args.model_version == 1:
-    model_version = 't5-base'
-elif args.model_version == 2:
-    model_version = 't5-large'
-elif args.model_version == 3:
-    model_version = 't5-3b'
-elif args.model_version == 4:
-    model_version = 't5-11b'
-else:
-    model_version = 't5-small'
+model_version = get_model_name(args.model_version)
 
 print('-' * 40 + 'ARGUMENTS' + '-' * 40)
 for arg in vars(args):
