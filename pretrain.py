@@ -68,7 +68,8 @@ device = torch.device('cuda' if args.cuda else 'cpu')
 
 if not os.path.exists(args.checkpoint):
     os.makedirs(args.checkpoint)
-model_path = os.path.join(args.checkpoint, 'model.pt')
+data_name = args.data_dir.split('/')[-2]
+model_path = os.path.join(args.checkpoint, f'model_{args.model_version}_{data_name}.pt')
 
 ###############################################################################
 # Load data
@@ -80,6 +81,8 @@ exp_corpus = ExpDataLoader(args.data_dir)
 seq_corpus = SeqDataLoader(args.data_dir)
 nuser = len(seq_corpus.user2items_positive)
 nitem = len(seq_corpus.id2item)
+print(f'Number of users: {nuser}')
+print(f'Number of items: {nitem}')
 all_iterator = TrainBatchify(exp_corpus.train, seq_corpus.user2items_positive, args.negative_num, nitem, tokenizer, args.exp_len, args.batch_size)
 exp_iterator = ExpBatchify(exp_corpus.valid, seq_corpus.user2items_positive, tokenizer, args.exp_len, args.batch_size)
 seq_iterator = SeqBatchify(seq_corpus.user2items_positive, tokenizer, args.batch_size)
@@ -90,6 +93,7 @@ topn_iterator = TopNBatchify(seq_corpus.user2items_positive, seq_corpus.user2ite
 ###############################################################################
 
 model = Solomon.from_pretrained(model_version)
+# model = model.to(torch.float16)
 model.init_graph_embeddings(args.alpha, args.sigma, args.L, exp_corpus.train, nuser, nitem)
 model.init_prompt(args.task_num, args.prompt_num, device)
 model.to(device)

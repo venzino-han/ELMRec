@@ -27,6 +27,7 @@ class Solomon(T5ForConditionalGeneration):
         n_nodes = self.user_num + self.item_num + 1
         row_idx = [pair['user'] for pair in records]
         col_idx = [pair['item'] for pair in records]
+        print(len(row_idx), len(col_idx))
         user_np = np.array(row_idx)
         item_np = np.array(col_idx)
         ratings = np.ones_like(user_np, dtype=np.float32)
@@ -193,7 +194,7 @@ class Solomon(T5ForConditionalGeneration):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
+    
     def beam_search(
         self,
         task_id=None,
@@ -210,69 +211,117 @@ class Solomon(T5ForConditionalGeneration):
         num_return_sequences=20,
         bad_words_ids=None,
     ):
-        # define decoder start token ids
-        batch_size = input_ids.size(0)
-        decoder_input_ids = torch.ones((num_beams * batch_size, 1), dtype=torch.int64).to(self.model_device)
-        decoder_input_ids = decoder_input_ids * self.config.decoder_start_token_id
-
-        # add encoder_outputs to model keyword arguments
+        # Prepare encoder inputs
         if task_id is None:
             input_emb = self.input_plus_whole_word(input_ids, whole_word_ids)
         else:
             input_emb, attention_mask = self.append_prompt(task_id, input_ids, whole_word_ids, attention_mask)
+
+        # Prepare `model_kwargs` to include encoder outputs
         model_kwargs = {
             "encoder_outputs": self.encoder(
-                attention_mask=attention_mask.repeat_interleave(num_beams, dim=0),
-                inputs_embeds=input_emb.repeat_interleave(num_beams, dim=0),
+                attention_mask=attention_mask,
+                inputs_embeds=input_emb,
                 return_dict=True,
             )
         }
 
-        # instantiate beam scorer
-        beam_scorer = BeamSearchScorer(
-            batch_size=batch_size,
+        # Use the `generate` method for text generation
+        generated_sequences = super().generate(
+            inputs=None,  # No direct inputs since we use encoder outputs
+            max_length=max_length,
             num_beams=num_beams,
-            device=self.model_device,
+            num_return_sequences=num_return_sequences,
             num_beam_groups=num_beam_groups,
-            num_beam_hyps_to_keep=num_return_sequences,
-            do_early_stopping=early_stopping,
+            early_stopping=early_stopping,
+            min_length=min_length,
+            diversity_penalty=diversity_penalty,
+            repetition_penalty=repetition_penalty,
+            bad_words_ids=bad_words_ids,
+            **model_kwargs,
         )
 
-        criteria = StoppingCriteriaList()
-        criteria.append(MaxLengthCriteria(max_length=max_length))
+        return generated_sequences
 
-        # instantiate logits processors
-        logits_processor = LogitsProcessorList()
-        logits_processor.append(MinLengthLogitsProcessor(min_length, eos_token_id=self.config.eos_token_id))
-        if bad_words_ids is not None:
-            logits_processor.append(NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id=self.config.eos_token_id))
+    # def beam_search(
+    #     self,
+    #     task_id=None,
+    #     input_ids=None,
+    #     whole_word_ids=None,
+    #     attention_mask=None,
+    #     max_length=50,
+    #     num_beams=20,
+    #     num_beam_groups=1,
+    #     early_stopping=True,
+    #     min_length=1,
+    #     diversity_penalty=0.0,
+    #     repetition_penalty=1.0,
+    #     num_return_sequences=20,
+    #     bad_words_ids=None,
+    # ):
+    #     # define decoder start token ids
+    #     batch_size = input_ids.size(0)
+    #     decoder_input_ids = torch.ones((num_beams * batch_size, 1), dtype=torch.int64).to(self.model_device)
+    #     decoder_input_ids = decoder_input_ids * self.config.decoder_start_token_id
 
-        if num_beam_groups == 1:
-            return super().beam_search(
-                decoder_input_ids,
-                beam_scorer,
-                stopping_criteria=criteria,
-                logits_processor=logits_processor,
-                **model_kwargs)
-        else:
-            if diversity_penalty > 0.0:
-                logits_processor.append(
-                    HammingDiversityLogitsProcessor(
-                        diversity_penalty,
-                        num_beams=num_beams,
-                        num_beam_groups=num_beam_groups,
-                    )
-                )
-            if repetition_penalty != 1.0:
-                logits_processor.append(
-                    RepetitionPenaltyLogitsProcessor(
-                        penalty=repetition_penalty,
-                    )
-                )
+    #     # add encoder_outputs to model keyword arguments
+    #     if task_id is None:
+    #         input_emb = self.input_plus_whole_word(input_ids, whole_word_ids)
+    #     else:
+    #         input_emb, attention_mask = self.append_prompt(task_id, input_ids, whole_word_ids, attention_mask)
+    #     model_kwargs = {
+    #         "encoder_outputs": self.encoder(
+    #             attention_mask=attention_mask.repeat_interleave(num_beams, dim=0),
+    #             inputs_embeds=input_emb.repeat_interleave(num_beams, dim=0),
+    #             return_dict=True,
+    #         )
+    #     }
 
-            return super().group_beam_search(
-                decoder_input_ids,
-                beam_scorer,
-                stopping_criteria=criteria,
-                logits_processor=logits_processor,
-                **model_kwargs)
+    #     # instantiate beam scorer
+    #     beam_scorer = BeamSearchScorer(
+    #         batch_size=batch_size,
+    #         num_beams=num_beams,
+    #         device=self.model_device,
+    #         num_beam_groups=num_beam_groups,
+    #         num_beam_hyps_to_keep=num_return_sequences,
+    #         do_early_stopping=early_stopping,
+    #     )
+
+    #     criteria = StoppingCriteriaList()
+    #     criteria.append(MaxLengthCriteria(max_length=max_length))
+
+    #     # instantiate logits processors
+    #     logits_processor = LogitsProcessorList()
+    #     logits_processor.append(MinLengthLogitsProcessor(min_length, eos_token_id=self.config.eos_token_id))
+    #     if bad_words_ids is not None:
+    #         logits_processor.append(NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id=self.config.eos_token_id))
+
+    #     if num_beam_groups == 1:
+    #         return super().beam_search(
+    #             decoder_input_ids,
+    #             beam_scorer,
+    #             stopping_criteria=criteria,
+    #             logits_processor=logits_processor,
+    #             **model_kwargs)
+    #     else:
+    #         if diversity_penalty > 0.0:
+    #             logits_processor.append(
+    #                 HammingDiversityLogitsProcessor(
+    #                     diversity_penalty,
+    #                     num_beams=num_beams,
+    #                     num_beam_groups=num_beam_groups,
+    #                 )
+    #             )
+    #         if repetition_penalty != 1.0:
+    #             logits_processor.append(
+    #                 RepetitionPenaltyLogitsProcessor(
+    #                     penalty=repetition_penalty,
+    #                 )
+    #             )
+
+    #         return super().group_beam_search(
+    #             decoder_input_ids,
+    #             beam_scorer,
+    #             stopping_criteria=criteria,
+    #             logits_processor=logits_processor,
+    #             **model_kwargs)
